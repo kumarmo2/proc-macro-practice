@@ -16,7 +16,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let o_name = &ast.ident;
     let b_name = format!("{}Builder", o_name);
     let b_ident = Ident::new(&b_name, o_name.span());
-    println!("builder name: {}", b_name);
+
+    // let x = Some(32);
+
     let fields = if let Data::Struct(DataStruct {
         fields: Fields::Named(FieldsNamed { named, .. }),
         ..
@@ -55,10 +57,16 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     });
 
+    let build_fields = fields.iter().map(|f| {
+        let name = &f.ident;
+        quote! {
+            #name: self.#name.ok_or("sdfsdf")?,
+        }
+    });
+
     let t = quote! {
         impl #o_name {
             pub fn builder() -> #b_ident{
-            // pub fn builder() -> Self{
                 #b_ident{
                     #(
                         #builder_default_fields
@@ -71,6 +79,16 @@ pub fn derive(input: TokenStream) -> TokenStream {
             #(
                 #setters
             )*
+        }
+
+        impl #b_ident {
+        pub fn build(self) -> Result<#o_name, Box<dyn std::error::Error>> {
+            Ok(#o_name {
+                #(
+                    #build_fields
+                )*
+            })
+        }
 
         }
 
