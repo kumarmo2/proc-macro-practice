@@ -60,7 +60,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let build_fields = fields.iter().map(|f| {
         let name = &f.ident;
         quote! {
-            #name: self.#name.ok_or("sdfsdf")?,
+            #name: self.#name.clone().ok_or("sdfsdf")?,
         }
     });
 
@@ -82,7 +82,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
 
         impl #b_ident {
-        pub fn build(self) -> Result<#o_name, Box<dyn std::error::Error>> {
+        pub fn build(&mut self) -> Result<#o_name, Box<dyn std::error::Error>> {
             Ok(#o_name {
                 #(
                     #build_fields

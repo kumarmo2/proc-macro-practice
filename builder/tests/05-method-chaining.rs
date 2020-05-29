@@ -12,13 +12,15 @@ pub struct Command {
 }
 
 fn main() {
-    let command = Command::builder()
+    println!("=================================================================");
+    // let mut command = Command::builder()
+    let mut command = Command::builder()
         .executable("cargo".to_owned())
         .args(vec!["build".to_owned(), "--release".to_owned()])
         .env(vec![])
         .current_dir("..".to_owned())
-        .build()
-        .unwrap();
+        .build();
+    // .unwrap();
 
     // assert_eq!(command.executable, "cargo");
 }
