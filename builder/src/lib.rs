@@ -43,8 +43,17 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 }
             }
             None => {
-                quote! {
-                    #name: Option<#ty>,
+                match is_builder_of(f) {
+                    None => {
+                        quote! {
+                            #name: std::option::Option<#ty>,
+                        }
+                    },
+                    Some(_) => {
+                        quote! {
+                            #name: #ty,
+                        }
+                    }
                 }
             }
         }
@@ -58,58 +67,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
             None => {}
         }
 
-        let mut builder_method_name = None;
+        let mut builder_method_name = is_builder_of(f);
 
-        for attr in f.attrs.iter() {
-            match attr.parse_meta() {
-                Ok(meta) => {
-                    // println!("found meta, path: {:?}", meta.path());
-                    match meta {
-                        Meta::List(list) => {
-                            // println!("matched with list, {:#?}", list);
-                            if list
-                                .path
-                                .segments
-                                .iter()
-                                .any(|s| &s.ident.to_string() == "builder")
-                            {
-                                // println!("found builder")
-                                if list.nested.len() > 0 {
-                                    match list.nested.first().unwrap() {
-                                        NestedMeta::Meta(meta) => match meta {
-                                            Meta::NameValue(name_value_meta) => {
-                                                if name_value_meta
-                                                    .path
-                                                    .segments
-                                                    .iter()
-                                                    .any(|s| &s.ident.to_string() == "each")
-                                                {
-                                                    match &name_value_meta.lit {
-                                                        Lit::Str(litstr) => {
-                                                            println!(
-                                                                "litstr: {:?}",
-                                                                litstr.value()
-                                                            );
-                                                            builder_method_name =
-                                                                Some(litstr.value());
-                                                        }
-                                                        _ => {}
-                                                    }
-                                                }
-                                            }
-                                            _ => {}
-                                        },
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Err(_) => {}
-            }
-        }
         match builder_method_name {
             None => {
                 // println!("no builder method found");
@@ -121,12 +80,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 }
             }
             Some(method_name) => {
-                println!("method name: {}", method_name);
                 if name.as_ref().unwrap().to_string() == method_name {
                     // println!("builder method with same name");
                     return quote! {
                         fn #name(&mut self, #name: #ty) -> &mut #b_ident {
-                            self.#name = Some(#name);
+                            // self.#name = Some(#name);
+                            self.#name = #name;
                             self
                         }
                     };
@@ -139,21 +98,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             let new_method_ident = Ident::new(&method_name, Span::call_site());
                             quote! {
                                 fn #new_method_ident(&mut self, item: #gen_ident ) -> &mut #b_ident {
-                                    match self.#name {
-                                        Some(_) => {
-                                            self.#name.as_mut().unwrap().push(item);
-                                        },
-                                        None => {
-                                            let mut v = Vec::new();
-                                            v.push(item);
-                                            self.#name = Some(v);
-                                        }
-                                    }
+                                    self.#name.push(item);
                                     self
                                 }
 
                                 fn #name(&mut self, #name: #ty) -> &mut #b_ident {
-                                    self.#name = Some(#name);
+                                    // self.#name = Some(#name);
+                                    self.#name = #name;
                                     self
                                 }
                             }
@@ -167,12 +118,6 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             }
                         }
                     }
-                    // quote! {
-                    //     fn #name(&mut self, #name: #ty) -> &mut #b_ident {
-                    //         self.#name = Some(#name);
-                    //         self
-                    //     }
-                    // }
                 }
             }
         }
@@ -180,8 +125,17 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let builder_default_fields = fields.iter().map(|f| {
         let name = &f.ident;
-        quote! {
-            #name: None,
+        match is_builder_of(f) {
+            Some(_) => {
+                quote! {
+                    #name: Vec::new(),
+                }
+            },
+            None => {
+                quote! {
+                    #name: None,
+                }
+            }
         }
     });
 
@@ -193,8 +147,19 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     #name: self.#name.clone(),
                 }
             }
-            None => quote! {
-                #name: self.#name.clone().ok_or("sdfsdf")?,
+            None => {
+                    match is_builder_of(f) {
+                        None => {
+                            return quote! {
+                                #name: self.#name.clone().ok_or("sdfsdf")?,
+                            }
+                        },
+                        Some(_) => {
+                            quote! {
+                                #name: self.#name.clone(),
+                            }
+                        }
+                    }
             },
         }
     });
@@ -218,7 +183,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
 
         impl #b_ident {
-        pub fn build(&mut self) -> Result<#o_name, Box<dyn std::error::Error>> {
+        pub fn build(&mut self) -> std::result::Result<#o_name, std::boxed::Box<dyn std::error::Error>> {
             Ok(#o_name {
                 #(
                     #build_fields
@@ -235,9 +200,59 @@ pub fn derive(input: TokenStream) -> TokenStream {
     t.into()
 }
 
-// fn is_builder_of(f: &Field) -> Some(String) {
+fn is_builder_of(f: &Field) -> Option<String> {
+    for attr in f.attrs.iter() {
+        match attr.parse_meta() {
+            Ok(meta) => {
+                // println!("found meta, path: {:?}", meta.path());
+                match meta {
+                    Meta::List(list) => {
+                        // println!("matched with list, {:#?}", list);
+                        if list
+                            .path
+                            .segments
+                            .iter()
+                            .any(|s| &s.ident.to_string() == "builder")
+                        {
+                            // println!("found builder")
+                            if list.nested.len() > 0 {
+                                match list.nested.first().unwrap() {
+                                    NestedMeta::Meta(meta) => match meta {
+                                        Meta::NameValue(name_value_meta) => {
+                                            if name_value_meta
+                                                .path
+                                                .segments
+                                                .iter()
+                                                .any(|s| &s.ident.to_string() == "each")
+                                            {
+                                                match &name_value_meta.lit {
+                                                    Lit::Str(litstr) => {
+                                                        println!(
+                                                            "litstr: {:?}",
+                                                            litstr.value()
+                                                        );
+                                                            return Some(litstr.value());
+                                                    }
+                                                    _ => {return None;}
+                                                }
+                                            }
+                                        }
+                                        _ => {return None;}
+                                    },
+                                    _ => {return None;}
+                                }
+                            }
+                        }
+                    }
+                    _ => {return None;}
+                }
+            }
+            Err(_) => {return None;}
+        }
+    }
+    return None;
 
-// }
+}
 
 fn get_generic_type_of_vec(f: &Field) -> Option<&Type> {
     match &f.ty {
@@ -253,18 +268,6 @@ fn get_generic_type_of_vec(f: &Field) -> Option<&Type> {
                             match gen_args.args.last().unwrap() {
                                 GenericArgument::Type(ty) => {
                                     return Some(ty);
-                                    // match ty {
-                                    // Type::Path(ty_p) => {
-                                    //     // println!(
-                                    //     //     "ident: {:#?}",
-                                    //     //     ty_p.path.segments.last().unwrap().ident,
-                                    //     // );
-                                    //     // return Some(&ty_p.path.segments.last().unwrap().ident);
-                                    //     Some(ty_p)
-                                    // }
-                                    // _ => return None,
-                                    // },
-                                    // _ => return None,
                                 }
                                 _ => {
                                     return None;
