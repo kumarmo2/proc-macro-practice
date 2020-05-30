@@ -1,9 +1,9 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Type};
+use syn::{parse_macro_input, DeriveInput, Lit, Meta, NestedMeta, Type};
 
-#[proc_macro_derive(Builder)]
+#[proc_macro_derive(Builder, attributes(builder))]
 pub fn derive(input: TokenStream) -> TokenStream {
     // Prefix o_ means original
     // Prefix b_ means builder
@@ -17,8 +17,6 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let b_name = format!("{}Builder", o_name);
     let b_ident = Ident::new(&b_name, o_name.span());
 
-    // let x = Some(32);
-
     let fields = if let Data::Struct(DataStruct {
         fields: Fields::Named(FieldsNamed { named, .. }),
         ..
@@ -26,6 +24,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     {
         named
     } else {
+        // Only supports structs.
         unimplemented!();
     };
 
@@ -52,6 +51,52 @@ pub fn derive(input: TokenStream) -> TokenStream {
         match is_field_option_type(f) {
             Some(t) => ty = t,
             None => {}
+        }
+
+        for attr in f.attrs.iter() {
+            match attr.parse_meta() {
+                Ok(meta) => {
+                    println!("found meta, path: {:?}", meta.path());
+                    match meta {
+                        Meta::List(list) => {
+                            println!("matched with list, {:#?}", list);
+                            if list
+                                .path
+                                .segments
+                                .iter()
+                                .any(|s| &s.ident.to_string() == "builder")
+                            {
+                                println!("found builder");
+                                if list.nested.len() > 0 {
+                                    match list.nested.first().unwrap() {
+                                        NestedMeta::Meta(meta) => match meta {
+                                            Meta::NameValue(name_value_meta) => {
+                                                if name_value_meta
+                                                    .path
+                                                    .segments
+                                                    .iter()
+                                                    .any(|s| &s.ident.to_string() == "each")
+                                                {
+                                                    // match name_value_meta.lit {
+                                                    //     Lit::Str(litstr) => {
+                                                    //         // lit
+                                                    //     }
+                                                    //     _ => {}
+                                                    // }
+                                                }
+                                            }
+                                            _ => {}
+                                        },
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Err(_) => {}
+            }
         }
 
         quote! {
