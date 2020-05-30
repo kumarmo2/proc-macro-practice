@@ -6,6 +6,7 @@
 // To run the code:
 //     $ cargo run
 
+
 use derive_builder::Builder;
 
 #[derive(Builder)]
@@ -21,8 +22,9 @@ pub struct Command {
 fn main() {
     let command = Command::builder()
         .executable("cargo".to_owned())
-        // .arg("build".to_owned())
-        // .arg("--release".to_owned())
+        .arg("build".to_owned())
+        .arg("--release".to_owned())
+        .env(vec!["sdff".to_owned()])
         .build()
         .unwrap();
 

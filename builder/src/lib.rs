@@ -1,7 +1,12 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Lit, Meta, NestedMeta, Type};
+use syn::Ident;
+use syn::{
+    parse_macro_input, DeriveInput, Field, GenericArgument, Lit, Meta, NestedMeta, PathArguments,
+    Type,
+};
 
 #[proc_macro_derive(Builder, attributes(builder))]
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -10,7 +15,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     // TODO: Currently it will work for only Structs with named fields.
 
-    use syn::{Data, DataStruct, Fields, FieldsNamed, Ident};
+    use syn::{Data, DataStruct, Fields, FieldsNamed};
 
     let ast: DeriveInput = parse_macro_input!(input as DeriveInput);
     let o_name = &ast.ident;
@@ -53,20 +58,22 @@ pub fn derive(input: TokenStream) -> TokenStream {
             None => {}
         }
 
+        let mut builder_method_name = None;
+
         for attr in f.attrs.iter() {
             match attr.parse_meta() {
                 Ok(meta) => {
-                    println!("found meta, path: {:?}", meta.path());
+                    // println!("found meta, path: {:?}", meta.path());
                     match meta {
                         Meta::List(list) => {
-                            println!("matched with list, {:#?}", list);
+                            // println!("matched with list, {:#?}", list);
                             if list
                                 .path
                                 .segments
                                 .iter()
                                 .any(|s| &s.ident.to_string() == "builder")
                             {
-                                println!("found builder");
+                                // println!("found builder")
                                 if list.nested.len() > 0 {
                                     match list.nested.first().unwrap() {
                                         NestedMeta::Meta(meta) => match meta {
@@ -77,12 +84,17 @@ pub fn derive(input: TokenStream) -> TokenStream {
                                                     .iter()
                                                     .any(|s| &s.ident.to_string() == "each")
                                                 {
-                                                    // match name_value_meta.lit {
-                                                    //     Lit::Str(litstr) => {
-                                                    //         // lit
-                                                    //     }
-                                                    //     _ => {}
-                                                    // }
+                                                    match &name_value_meta.lit {
+                                                        Lit::Str(litstr) => {
+                                                            println!(
+                                                                "litstr: {:?}",
+                                                                litstr.value()
+                                                            );
+                                                            builder_method_name =
+                                                                Some(litstr.value());
+                                                        }
+                                                        _ => {}
+                                                    }
                                                 }
                                             }
                                             _ => {}
@@ -98,11 +110,70 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 Err(_) => {}
             }
         }
+        match builder_method_name {
+            None => {
+                // println!("no builder method found");
+                quote! {
+                    fn #name(&mut self, #name: #ty) -> &mut #b_ident {
+                        self.#name = Some(#name);
+                        self
+                    }
+                }
+            }
+            Some(method_name) => {
+                println!("method name: {}", method_name);
+                if name.as_ref().unwrap().to_string() == method_name {
+                    // println!("builder method with same name");
+                    return quote! {
+                        fn #name(&mut self, #name: #ty) -> &mut #b_ident {
+                            self.#name = Some(#name);
+                            self
+                        }
+                    };
+                } else {
+                    // Assuming the field is Vec<T>
+                    // println!("builder method with different name, field: {:#?}", ty);
+                    match get_generic_type_of_vec(f) {
+                        Some(gen_ident) => {
+                            // println!("gen_ident: {:#?}", gen_ident);
+                            let new_method_ident = Ident::new(&method_name, Span::call_site());
+                            quote! {
+                                fn #new_method_ident(&mut self, item: #gen_ident ) -> &mut #b_ident {
+                                    match self.#name {
+                                        Some(_) => {
+                                            self.#name.as_mut().unwrap().push(item);
+                                        },
+                                        None => {
+                                            let mut v = Vec::new();
+                                            v.push(item);
+                                            self.#name = Some(v);
+                                        }
+                                    }
+                                    self
+                                }
 
-        quote! {
-            fn #name(&mut self, #name: #ty) -> &mut #b_ident {
-                self.#name = Some(#name);
-                self
+                                fn #name(&mut self, #name: #ty) -> &mut #b_ident {
+                                    self.#name = Some(#name);
+                                    self
+                                }
+                            }
+                        }
+                        None => {
+                            quote! {
+                                fn #name(&mut self, #name: #ty) -> &mut #b_ident {
+                                    self.#name = Some(#name);
+                                    self
+                                }
+                            }
+                        }
+                    }
+                    // quote! {
+                    //     fn #name(&mut self, #name: #ty) -> &mut #b_ident {
+                    //         self.#name = Some(#name);
+                    //         self
+                    //     }
+                    // }
+                }
             }
         }
     });
@@ -164,9 +235,64 @@ pub fn derive(input: TokenStream) -> TokenStream {
     t.into()
 }
 
+// fn is_builder_of(f: &Field) -> Some(String) {
+
+// }
+
+fn get_generic_type_of_vec(f: &Field) -> Option<&Type> {
+    match &f.ty {
+        Type::Path(type_path) => {
+            // TODO: Check if using last() here is correct.
+            // let vec_path_segment = type_path.path.segments.last();
+            // println!("path segs: {:#?}", type_path.path.segments);
+            if type_path.path.segments.len() > 0 {
+                match &type_path.path.segments.last().unwrap().arguments {
+                    PathArguments::AngleBracketed(gen_args) => {
+                        // println!("Gen Args: {:#?}", gen_args);
+                        if gen_args.args.len() > 0 {
+                            match gen_args.args.last().unwrap() {
+                                GenericArgument::Type(ty) => {
+                                    return Some(ty);
+                                    // match ty {
+                                    // Type::Path(ty_p) => {
+                                    //     // println!(
+                                    //     //     "ident: {:#?}",
+                                    //     //     ty_p.path.segments.last().unwrap().ident,
+                                    //     // );
+                                    //     // return Some(&ty_p.path.segments.last().unwrap().ident);
+                                    //     Some(ty_p)
+                                    // }
+                                    // _ => return None,
+                                    // },
+                                    // _ => return None,
+                                }
+                                _ => {
+                                    return None;
+                                }
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                    _ => {
+                        println!("not found angleBracketed args");
+                        return None;
+                    }
+                }
+            } else {
+                return None;
+            }
+        }
+        _ => {
+            println!("field is not of type path");
+            return None;
+        }
+    }
+}
+
 // TODO: Refactor this method. Damn its soo unreadable! -_-
 fn is_field_option_type<'a>(f: &'a syn::Field) -> Option<&'a Type> {
-    use syn::{AngleBracketedGenericArguments, GenericArgument, Path, PathArguments, TypePath};
+    use syn::{AngleBracketedGenericArguments, GenericArgument, Path, TypePath};
     let ty = &f.ty;
     match ty {
         Type::Path(type_path) => {
@@ -182,7 +308,8 @@ fn is_field_option_type<'a>(f: &'a syn::Field) -> Option<&'a Type> {
                             PathArguments::AngleBracketed(AngleBracketedGenericArguments {
                                 args,
                                 ..
-                            }) => match args.first().unwrap() {
+                            }) => match args.last().unwrap() {
+                                // TODO: fix this bug, this code will fail for Option<std::string::String>
                                 GenericArgument::Type(t) => {
                                     return Some(t);
                                 }
