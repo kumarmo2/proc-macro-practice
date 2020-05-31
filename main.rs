@@ -6,18 +6,16 @@
 // To run the code:
 //     $ cargo run
 
+use seq::seq;
 
-use derive_builder::Builder;
-
-type Option = ();
-type Some = ();
-type None = ();
-type Result = ();
-type Box = ();
-
-#[derive(Builder)]
-pub struct Command {
-    executable: String,
+macro_rules! expand_to_nothing {
+    ($arg:literal) => {
+        // nothing
+    };
 }
+
+seq!(N in 0..4 {
+    expand_to_nothing!(N);
+});
 
 fn main() {}

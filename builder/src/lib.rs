@@ -42,20 +42,18 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     #name: #ty,
                 }
             }
-            None => {
-                match is_builder_of(f) {
-                    None => {
-                        quote! {
-                            #name: std::option::Option<#ty>,
-                        }
-                    },
-                    Some(_) => {
-                        quote! {
-                            #name: #ty,
-                        }
+            None => match is_builder_of(f) {
+                None => {
+                    quote! {
+                        #name: std::option::Option<#ty>,
                     }
                 }
-            }
+                Some(_) => {
+                    quote! {
+                        #name: #ty,
+                    }
+                }
+            },
         }
     });
 
@@ -67,11 +65,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
             None => {}
         }
 
-        let mut builder_method_name = is_builder_of(f);
+        let builder_method_name = is_builder_of(f);
 
         match builder_method_name {
             None => {
-                // println!("no builder method found");
                 quote! {
                     fn #name(&mut self, #name: #ty) -> &mut #b_ident {
                         self.#name = Some(#name);
@@ -91,10 +88,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     };
                 } else {
                     // Assuming the field is Vec<T>
-                    // println!("builder method with different name, field: {:#?}", ty);
                     match get_generic_type_of_vec(f) {
                         Some(gen_ident) => {
-                            // println!("gen_ident: {:#?}", gen_ident);
                             let new_method_ident = Ident::new(&method_name, Span::call_site());
                             quote! {
                                 fn #new_method_ident(&mut self, item: #gen_ident ) -> &mut #b_ident {
@@ -103,7 +98,6 @@ pub fn derive(input: TokenStream) -> TokenStream {
                                 }
 
                                 fn #name(&mut self, #name: #ty) -> &mut #b_ident {
-                                    // self.#name = Some(#name);
                                     self.#name = #name;
                                     self
                                 }
@@ -130,7 +124,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 quote! {
                     #name: Vec::new(),
                 }
-            },
+            }
             None => {
                 quote! {
                     #name: None,
@@ -147,25 +141,22 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     #name: self.#name.clone(),
                 }
             }
-            None => {
-                    match is_builder_of(f) {
-                        None => {
-                            return quote! {
-                                #name: self.#name.clone().ok_or("sdfsdf")?,
-                            }
-                        },
-                        Some(_) => {
-                            quote! {
-                                #name: self.#name.clone(),
-                            }
-                        }
+            None => match is_builder_of(f) {
+                None => {
+                    return quote! {
+                        #name: self.#name.clone().ok_or("sdfsdf")?,
                     }
+                }
+                Some(_) => {
+                    quote! {
+                        #name: self.#name.clone(),
+                    }
+                }
             },
         }
     });
 
     let t = quote! {
-        // use std::opt::Option;
         impl #o_name {
             pub fn builder() -> #b_ident{
                 #b_ident{
@@ -203,55 +194,56 @@ pub fn derive(input: TokenStream) -> TokenStream {
 fn is_builder_of(f: &Field) -> Option<String> {
     for attr in f.attrs.iter() {
         match attr.parse_meta() {
-            Ok(meta) => {
-                // println!("found meta, path: {:?}", meta.path());
-                match meta {
-                    Meta::List(list) => {
-                        // println!("matched with list, {:#?}", list);
-                        if list
-                            .path
-                            .segments
-                            .iter()
-                            .any(|s| &s.ident.to_string() == "builder")
-                        {
-                            // println!("found builder")
-                            if list.nested.len() > 0 {
-                                match list.nested.first().unwrap() {
-                                    NestedMeta::Meta(meta) => match meta {
-                                        Meta::NameValue(name_value_meta) => {
-                                            if name_value_meta
-                                                .path
-                                                .segments
-                                                .iter()
-                                                .any(|s| &s.ident.to_string() == "each")
-                                            {
-                                                match &name_value_meta.lit {
-                                                    Lit::Str(litstr) => {
-                                                        println!(
-                                                            "litstr: {:?}",
-                                                            litstr.value()
-                                                        );
-                                                            return Some(litstr.value());
-                                                    }
-                                                    _ => {return None;}
+            Ok(meta) => match meta {
+                Meta::List(list) => {
+                    if list
+                        .path
+                        .segments
+                        .iter()
+                        .any(|s| &s.ident.to_string() == "builder")
+                    {
+                        if list.nested.len() > 0 {
+                            match list.nested.first().unwrap() {
+                                NestedMeta::Meta(meta) => match meta {
+                                    Meta::NameValue(name_value_meta) => {
+                                        if name_value_meta
+                                            .path
+                                            .segments
+                                            .iter()
+                                            .any(|s| &s.ident.to_string() == "each")
+                                        {
+                                            match &name_value_meta.lit {
+                                                Lit::Str(litstr) => {
+                                                    println!("litstr: {:?}", litstr.value());
+                                                    return Some(litstr.value());
+                                                }
+                                                _ => {
+                                                    return None;
                                                 }
                                             }
                                         }
-                                        _ => {return None;}
-                                    },
-                                    _ => {return None;}
+                                    }
+                                    _ => {
+                                        return None;
+                                    }
+                                },
+                                _ => {
+                                    return None;
                                 }
                             }
                         }
                     }
-                    _ => {return None;}
                 }
+                _ => {
+                    return None;
+                }
+            },
+            Err(_) => {
+                return None;
             }
-            Err(_) => {return None;}
         }
     }
     return None;
-
 }
 
 fn get_generic_type_of_vec(f: &Field) -> Option<&Type> {
@@ -295,7 +287,7 @@ fn get_generic_type_of_vec(f: &Field) -> Option<&Type> {
 
 // TODO: Refactor this method. Damn its soo unreadable! -_-
 fn is_field_option_type<'a>(f: &'a syn::Field) -> Option<&'a Type> {
-    use syn::{AngleBracketedGenericArguments, GenericArgument, Path, TypePath};
+    use syn::{AngleBracketedGenericArguments, Path, TypePath};
     let ty = &f.ty;
     match ty {
         Type::Path(type_path) => {
