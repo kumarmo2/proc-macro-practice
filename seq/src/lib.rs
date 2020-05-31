@@ -46,13 +46,13 @@ impl Parse for Ds {
 #[proc_macro]
 pub fn seq(input: TokenStream) -> TokenStream {
     let ds = parse_macro_input!(input as Ds);
-    let content = &ds.content_token_stream;
+    println!("ds: {:#?}", ds);
+    TokenStream::new()
+    // let content = &ds.content_token_stream;
     // parse_macro_input!(input as Ds);
-    // println!("ds: {:#?}", ds);
-    // TokenStream::new()
-    let t = quote! {
-        #content
-        // pub fn my_fun(){}
-    };
-    t.into()
+    // let t = quote! {
+    //     #content
+    //     // pub fn my_fun(){}
+    // };
+    // t.into()
 }
