@@ -6,16 +6,11 @@
 // To run the code:
 //     $ cargo run
 
+
 use seq::seq;
 
-macro_rules! expand_to_nothing {
-    ($arg:literal) => {
-        // nothing
-    };
-}
-
 seq!(N in 0..4 {
-    expand_to_nothing!(N);
+    compile_error!(concat!("error number ", stringify!(N)));
 });
 
 fn main() {}
