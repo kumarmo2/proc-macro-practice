@@ -55,16 +55,22 @@ impl Parse for Ds {
 #[proc_macro]
 pub fn seq(input: TokenStream) -> TokenStream {
     let ds = parse_macro_input!(input as Ds);
-    let tokens: Vec<TokenStream> = ds.content_token_stream.into_iter().enumerate().map(|(index, tok): (usize, TokenTree)| {
-        println!("token: {:#?}", tok);
-        let func_name_string = format!("my_func{}", index);
-        let func_name_ident = Ident::new(&func_name_string, Span::call_site());
-        let t = quote! {
-            pub fn #func_name_ident(){}
-        };
-        t.into()
-    }).collect();
+    // println!("ds: {:#?}", ds);
+    // let tokens: Vec<TokenStream> = ds.content_token_stream.into_iter().enumerate().map(|(index, tok): (usize, TokenTree)| {
+    //     let func_name_string = format!("my_func{}", index);
+    //     let func_name_ident = Ident::new(&func_name_string, Span::call_site());
+    //     let t = quote! {
+    //         pub fn #func_name_ident(){}
+    //         // #tok
+    //     };
+    //     t.into()
+    // }).collect();
+    let original: Vec<TokenTree> =  ds.content_token_stream.into_iter().collect();
+    let copied: Vec<TokenTree> = original.clone();
 
-    println!("tokens: {:#?}", tokens);
-    TokenStream::from_iter(tokens)
+    println!("tt: {:#?}", original);
+
+    TokenStream::new()
 }
+
+fn replace_and_clone(to_replace: Ident, tree: Vec<TokenTree>) {}
