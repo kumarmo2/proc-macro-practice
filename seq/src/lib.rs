@@ -73,6 +73,7 @@ pub fn seq(input: TokenStream) -> TokenStream {
 
 // TODO: Remove Vec clones if possible.
 // Refactor.
+// accept u64 instead of lit_int.
 fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>) -> Vec<TokenTree>{
     let mut cloned: Vec<TokenTree> = Vec::new();
     for token in tree {
