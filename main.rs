@@ -10,7 +10,7 @@
 use seq::seq;
 
 seq!(N in 0..4 {
-    compile_error!(concat!("error number ", stringify!(N)));
+    compile_error!(concat!("error number ", "sdfsdfsdf"));
 });
 
 fn main() {}

@@ -1,8 +1,7 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree};
-use quote::{ToTokens, quote};
+use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree, Group, Literal};
 use std::result::Result;
 use std::iter::FromIterator;
 use syn::{
@@ -26,10 +25,8 @@ impl Parse for Ds {
         stream.parse::<Token![..]>()?;
         let lit_int_end = stream.parse::<LitInt>()?;
         let lookahead = stream.lookahead1();
-        // let token_tree;
         let content_token_stream;
         if lookahead.peek(token::Brace) {
-            println!("inside if");
             let x: TokenTree = stream.parse()?;
             match x {
                 TokenTree::Group(g) => {
@@ -55,22 +52,55 @@ impl Parse for Ds {
 #[proc_macro]
 pub fn seq(input: TokenStream) -> TokenStream {
     let ds = parse_macro_input!(input as Ds);
-    // println!("ds: {:#?}", ds);
-    // let tokens: Vec<TokenStream> = ds.content_token_stream.into_iter().enumerate().map(|(index, tok): (usize, TokenTree)| {
-    //     let func_name_string = format!("my_func{}", index);
-    //     let func_name_ident = Ident::new(&func_name_string, Span::call_site());
-    //     let t = quote! {
-    //         pub fn #func_name_ident(){}
-    //         // #tok
-    //     };
-    //     t.into()
-    // }).collect();
+    // TODO: refactor this into different method.
     let original: Vec<TokenTree> =  ds.content_token_stream.into_iter().collect();
-    let copied: Vec<TokenTree> = original.clone();
+    let start: u64 =  ds.lit_int_start.base10_parse().unwrap();
+    let end: u64 = ds.lit_int_end.base10_parse().unwrap();
+    let mut result: Vec<TokenTree> = Vec::new();
+    for index in start..end {
+        let copied: Vec<TokenTree> = original.clone();
+        let lit = LitInt::new(&format!("{}", index), Span::call_site());
+        let tts: Vec<TokenTree> = replace_and_clone(&ds.counter_ident, &lit, copied);
+        for token in tts {
+            result.push(token);
+        }
+    }
+    let ts: TokenStream2 = TokenStream2::from_iter(result);
 
-    println!("tt: {:#?}", original);
-
-    TokenStream::new()
+    println!("ts: {:#?}", ts);
+    TokenStream::from(ts)
 }
 
-fn replace_and_clone(to_replace: Ident, tree: Vec<TokenTree>) {}
+// TODO: Remove Vec clones if possible.
+// Refactor.
+fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>) -> Vec<TokenTree>{
+    let mut cloned: Vec<TokenTree> = Vec::new();
+    for token in tree {
+        match token {
+            TokenTree::Ident(ident) => {
+                if count_ident.to_string() == ident.to_string() {
+                    let num = lit_int.base10_parse::<u64>().unwrap();
+                    let lit = Literal::u64_unsuffixed(num);
+                    cloned.push(TokenTree::Literal(lit));
+                } else {
+                    cloned.push(TokenTree::Ident(ident));
+                }
+            },
+            TokenTree::Punct(punct) => {
+                cloned.push(TokenTree::Punct(punct));
+            },
+            TokenTree::Literal(lit) => {
+                cloned.push(TokenTree::Literal(lit));
+            },
+            TokenTree::Group(group) => {
+                let stream: TokenStream2 = group.stream();
+                let x: Vec<TokenTree> = stream.into_iter().collect();
+                let new = replace_and_clone(count_ident, lit_int, x);
+                let ts = TokenStream2::from_iter(new);
+                let new_group = Group::new(group.delimiter(), ts);
+                cloned.push(TokenTree::Group(new_group));
+            }
+        }
+    }
+    cloned
+}
