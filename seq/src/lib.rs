@@ -67,23 +67,46 @@ pub fn seq(input: TokenStream) -> TokenStream {
     }
     let ts: TokenStream2 = TokenStream2::from_iter(result);
 
-    println!("ts: {:#?}", ts);
+    // println!("ts: {:#?}", ts);
     TokenStream::from(ts)
 }
+
+// fn replace_and_clone_token_tree(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>)
 
 // TODO: Remove Vec clones if possible.
 // Refactor.
 // accept u64 instead of lit_int.
 fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>) -> Vec<TokenTree>{
     let mut cloned: Vec<TokenTree> = Vec::new();
-    for token in tree {
+    let mut new_tree = tree.into_iter().peekable();
+    // for token in new_tree {
+    while let Some(_) = new_tree.peek() {
+        let token = new_tree.next().unwrap();
         match token {
             TokenTree::Ident(ident) => {
                 if count_ident.to_string() == ident.to_string() {
                     let num = lit_int.base10_parse::<u64>().unwrap();
                     let lit = Literal::u64_unsuffixed(num);
                     cloned.push(TokenTree::Literal(lit));
-                } else {
+                }else {
+                    // Handling test-case 04.
+                    if let Some(ref next_token) = new_tree.peek() {
+                        if let TokenTree::Punct(p) = next_token {
+                            if p.as_char() == '#' {
+                                let _pound_token = new_tree.next().unwrap();
+                                if let None = new_tree.peek() {
+                                    panic!("expected a token here");
+                                }
+                                let c_tok = new_tree.next().unwrap();
+                                if count_ident.to_string() ==  c_tok.to_string() {
+                                    let num = lit_int.base10_parse::<u64>().unwrap();
+                                    let lit = Literal::u64_unsuffixed(num);
+                                    cloned.push(TokenTree::Ident(Ident::new(&format!("{}{}", ident.to_string(), lit.to_string()), Span::call_site())));
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                     cloned.push(TokenTree::Ident(ident));
                 }
             },
