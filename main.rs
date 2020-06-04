@@ -6,38 +6,28 @@
 // To run the code:
 //     $ cargo run
 
-
 use seq::seq;
 
-seq!(N in 0..1 {
-    #[derive(Copy, Clone, PartialEq, Debug)]
-    enum Interrupt {
-        #(
-            Irq#N,
-        )*
-    }
-});
+const PROCS: [Proc; 256] = {
+    seq!(N in 0..256 {
+        [
+            #(
+                Proc::new(N),
+            )*
+        ]
+    })
+};
 
-fn main() {
-    // let interrupt = Interrupt::Irq8;
-
-    // assert_eq!(interrupt as u8, 8);
-    // assert_eq!(interrupt, Interrupt::Irq8);
+struct Proc {
+    id: usize,
 }
 
+impl Proc {
+    const fn new(id: usize) -> Self {
+        Proc { id }
+    }
+}
 
-
-
-// use seq::seq;
-
-// macro_rules! expand_to_nothing {
-//     ($arg:literal) => {
-//         // nothing
-//     };
-// }
-
-// seq!(N in 0..4 {
-//     expand_to_nothing!(N);
-// });
-
-// fn main() {}
+fn main() {
+    assert_eq!(PROCS[32].id, 32);
+}

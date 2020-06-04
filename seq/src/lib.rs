@@ -1,15 +1,16 @@
+#![feature(proc_macro_hygiene)] // Nightly feature to allow function-like macro in place of expressions.
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Delimiter, Span, TokenStream as TokenStream2, TokenTree, Group, Literal};
-use std::result::Result;
+use proc_macro2::{Delimiter, Group, Literal, Span, TokenStream as TokenStream2, TokenTree};
 use std::iter::FromIterator;
+use std::result::Result;
 use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, token, Error, Ident, LitInt, Token,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Ds {
     counter_ident: Ident,
     lit_int_start: LitInt,
@@ -22,8 +23,22 @@ impl Parse for Ds {
         let counter_ident = stream.parse::<Ident>()?;
         stream.parse::<Token![in]>()?;
         let lit_int_start = stream.parse::<LitInt>()?;
-        stream.parse::<Token![..]>()?;
-        let lit_int_end = stream.parse::<LitInt>()?;
+        let is_inclusive_range;
+        let lookahead = stream.lookahead1();
+        if lookahead.peek(Token![..=]) {
+            is_inclusive_range = true;
+            stream.parse::<Token![..=]>()?;
+        } else {
+            is_inclusive_range = false;
+            stream.parse::<Token![..]>()?;
+        }
+        let mut lit_int_end = stream.parse::<LitInt>()?;
+        if is_inclusive_range {
+            let end = lit_int_end
+                .base10_parse::<u64>()
+                .expect("could not parse as u64");
+            lit_int_end = LitInt::new(&format!("{}", end + 1), Span::call_site());
+        }
         let lookahead = stream.lookahead1();
         let content_token_stream;
         if lookahead.peek(token::Brace) {
@@ -31,7 +46,7 @@ impl Parse for Ds {
             match x {
                 TokenTree::Group(g) => {
                     content_token_stream = g.stream();
-                },
+                }
                 _ => {
                     panic!("Some error");
                 }
@@ -48,23 +63,27 @@ impl Parse for Ds {
     }
 }
 
-
+#[proc_macro]
+pub fn eseq(input: TokenStream) -> TokenStream {
+    seq(input)
+}
 
 #[proc_macro]
+// TODO: Remove all possible Clone starting with Vec cloning.
 pub fn seq(input: TokenStream) -> TokenStream {
     let ds = parse_macro_input!(input as Ds);
     // TODO: refactor this into different method.
-    let original: Vec<TokenTree> =  ds.content_token_stream.into_iter().collect();
-    let start: u64 =  ds.lit_int_start.base10_parse().unwrap();
+    let original: Vec<TokenTree> = ds.clone().content_token_stream.into_iter().collect();
+    let start: u64 = ds.lit_int_start.base10_parse().unwrap();
     let end: u64 = ds.lit_int_end.base10_parse().unwrap();
-    println!("has repeated block: {:#?}", has_repeating_block(original.clone()));
+    // println!("has repeated block: {:#?}", has_repeating_block(original.clone()));
     let has_repeating_block = has_repeating_block(original.clone());
     let mut result: Vec<TokenTree> = Vec::new();
     if has_repeating_block {
         let copied: Vec<TokenTree> = original.clone();
         let index = 0;
         let lit = LitInt::new(&format!("{}", index), Span::call_site());
-        let tts: Vec<TokenTree> = replace_and_clone(&ds.counter_ident, &lit, copied, true);
+        let tts: Vec<TokenTree> = replace_and_clone(&ds.counter_ident, &lit, copied, true, &ds);
         for token in tts {
             result.push(token);
         }
@@ -72,7 +91,8 @@ pub fn seq(input: TokenStream) -> TokenStream {
         for index in start..end {
             let copied: Vec<TokenTree> = original.clone();
             let lit = LitInt::new(&format!("{}", index), Span::call_site());
-            let tts: Vec<TokenTree> = replace_and_clone(&ds.counter_ident, &lit, copied, false);
+            let tts: Vec<TokenTree> =
+                replace_and_clone(&ds.counter_ident, &lit, copied, false, &ds);
             for token in tts {
                 result.push(token);
             }
@@ -80,17 +100,16 @@ pub fn seq(input: TokenStream) -> TokenStream {
     }
     let ts: TokenStream2 = TokenStream2::from_iter(result);
 
-    println!("ts: {:#?}", ts);
+    // println!("ts: {:#?}", ts);
     TokenStream::from(ts)
 }
-
 
 fn has_repeating_block(tree: Vec<TokenTree>) -> bool {
     let mut peekable_tree = tree.into_iter().peekable();
     while let Some(_) = peekable_tree.peek() {
         let token = peekable_tree.next().expect("=========first============");
         match token {
-            TokenTree::Ident(_) | TokenTree::Literal(_) => {},
+            TokenTree::Ident(_) | TokenTree::Literal(_) => {}
             TokenTree::Group(g) => {
                 let stream: TokenStream2 = g.stream();
                 let x: Vec<TokenTree> = stream.into_iter().collect();
@@ -98,7 +117,7 @@ fn has_repeating_block(tree: Vec<TokenTree>) -> bool {
                     return true;
                 }
                 continue;
-            },
+            }
             TokenTree::Punct(punct) => {
                 if punct.as_char() != '#' {
                     continue;
@@ -119,20 +138,20 @@ fn has_repeating_block(tree: Vec<TokenTree>) -> bool {
                         } else {
                             if let None = peekable_tree.peek() {
                                 panic!("=======expected token here");
-                            } 
-                            let next_next_token = peekable_tree.next().expect("================third");
+                            }
+                            let next_next_token =
+                                peekable_tree.next().expect("================third");
                             // println!("next next token: {:#?}", next_next_token);
                             if let TokenTree::Punct(punct) = next_next_token {
                                 if punct.as_char() != '*' {
                                     panic!("========== expected '*' token");
                                 }
                                 return true;
-
                             } else {
                                 panic!("expect '*' token");
                             }
                         }
-                    },
+                    }
                     _ => {
                         continue;
                     }
@@ -143,10 +162,16 @@ fn has_repeating_block(tree: Vec<TokenTree>) -> bool {
     false
 }
 
-// TODO: Remove Vec clones if possible.
-// Refactor.
+// TODO: Remove Vec clones for better compilation times.
+// wtf!!! Refactor this shit.
 // accept u64 instead of lit_int.
-fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>, has_repeating_block: bool) -> Vec<TokenTree>{
+fn replace_and_clone(
+    count_ident: &Ident,
+    lit_int: &LitInt,
+    tree: Vec<TokenTree>,
+    has_repeating_block: bool,
+    ds: &Ds,
+) -> Vec<TokenTree> {
     let mut cloned: Vec<TokenTree> = Vec::new();
     let mut new_tree = tree.into_iter().peekable();
     while let Some(_) = new_tree.peek() {
@@ -157,7 +182,7 @@ fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>
                     let num = lit_int.base10_parse::<u64>().unwrap();
                     let lit = Literal::u64_unsuffixed(num);
                     cloned.push(TokenTree::Literal(lit));
-                }else {
+                } else {
                     // Handling test-case 04.
                     if let Some(ref next_token) = new_tree.peek() {
                         if let TokenTree::Punct(p) = next_token {
@@ -167,10 +192,13 @@ fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>
                                     panic!("expected a token here");
                                 }
                                 let c_tok = new_tree.next().unwrap();
-                                if count_ident.to_string() ==  c_tok.to_string() {
+                                if count_ident.to_string() == c_tok.to_string() {
                                     let num = lit_int.base10_parse::<u64>().unwrap();
                                     let lit = Literal::u64_unsuffixed(num);
-                                    cloned.push(TokenTree::Ident(Ident::new(&format!("{}{}", ident.to_string(), lit.to_string()), Span::call_site())));
+                                    cloned.push(TokenTree::Ident(Ident::new(
+                                        &format!("{}{}", ident.to_string(), lit.to_string()),
+                                        Span::call_site(),
+                                    )));
                                     continue;
                                 }
                             }
@@ -178,9 +206,9 @@ fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>
                     }
                     cloned.push(TokenTree::Ident(ident));
                 }
-            },
+            }
             TokenTree::Punct(punct) => {
-                if !has_repeating_block || punct.as_char() != '#'{
+                if !has_repeating_block || punct.as_char() != '#' {
                     cloned.push(TokenTree::Punct(punct));
                     continue;
                 }
@@ -190,10 +218,8 @@ fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>
                 let next_token = new_tree.peek().expect("===========here========").clone();
                 match next_token {
                     TokenTree::Group(group) => {
-                        // new_tree.next().expect("should never happen");
                         if let Delimiter::Parenthesis = group.delimiter() {
                             new_tree.next().expect("should never happen"); // consuming the token.
-                            // println!("===========found repeat group=======: {:#?}", group);
                             if let None = new_tree.peek() {
                                 panic!("third expected '*' token");
                             }
@@ -203,18 +229,24 @@ fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>
                                     if punct.as_char() != '*' {
                                         panic!(" first expect '*' token here");
                                     }
-                                    // println!("found *");
-                                    // TODO: process the group.
-                                    let stream: TokenStream2 = group.stream();
-                                    let x: Vec<TokenTree> = stream.into_iter().collect();
-                                    let new_tokens = replace_and_clone(count_ident, lit_int, x, has_repeating_block);
-                                    cloned.extend(new_tokens.into_iter());
-                                    // let ts = TokenStream2::from_iter(new);
-                                    // let new_group = Group::new(group.delimiter(), ts);
-                                    // cloned.push(TokenTree::Group(new_group));
+                                    let start: u64 =
+                                        ds.clone().lit_int_start.base10_parse().unwrap();
+                                    let end: u64 = ds.clone().lit_int_end.base10_parse().unwrap();
+                                    for i in start..end {
+                                        let lit = LitInt::new(&format!("{}", i), Span::call_site());
+                                        let stream: TokenStream2 = group.stream();
+                                        let x: Vec<TokenTree> = stream.into_iter().collect();
+                                        let new_tokens = replace_and_clone(
+                                            count_ident,
+                                            &lit,
+                                            x,
+                                            has_repeating_block,
+                                            ds,
+                                        );
+                                        cloned.extend(new_tokens.into_iter());
+                                    }
                                 }
                                 _ => {
-                                    // println!("====going to panic=======: next next token: {:#?}", next_next_token);
                                     panic!("second expect '*' token here");
                                 }
                             }
@@ -222,22 +254,20 @@ fn replace_and_clone(count_ident: &Ident, lit_int: &LitInt, tree: Vec<TokenTree>
                             cloned.push(TokenTree::Punct(punct));
                             continue;
                         }
-                        // 1. if delimis are () and next next is punct(*)
-                        // 2. if delimis are not () -> push # and the group as well.
-                    },
+                    }
                     _ => {
                         cloned.push(TokenTree::Punct(punct));
                         continue;
                     }
                 }
-            },
+            }
             TokenTree::Literal(lit) => {
                 cloned.push(TokenTree::Literal(lit));
-            },
+            }
             TokenTree::Group(group) => {
                 let stream: TokenStream2 = group.stream();
                 let x: Vec<TokenTree> = stream.into_iter().collect();
-                let new = replace_and_clone(count_ident, lit_int, x, has_repeating_block);
+                let new = replace_and_clone(count_ident, lit_int, x, has_repeating_block, ds);
                 let ts = TokenStream2::from_iter(new);
                 let new_group = Group::new(group.delimiter(), ts);
                 cloned.push(TokenTree::Group(new_group));
