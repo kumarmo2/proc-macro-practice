@@ -6,28 +6,23 @@
 // To run the code:
 //     $ cargo run
 
-use seq::seq;
+use derive_debug::CustomDebug;
 
-const PROCS: [Proc; 256] = {
-    seq!(N in 0..256 {
-        [
-            #(
-                Proc::new(N),
-            )*
-        ]
-    })
-};
-
-struct Proc {
-    id: usize,
-}
-
-impl Proc {
-    const fn new(id: usize) -> Self {
-        Proc { id }
-    }
+#[derive(CustomDebug)]
+pub struct Field {
+    name: &'static str,
+    #[debug = "0b{:08b}"]
+    bitmask: u8,
 }
 
 fn main() {
-    assert_eq!(PROCS[32].id, 32);
+    let f = Field {
+        name: "F",
+        bitmask: 0b00011100,
+    };
+
+    let debug = format!("{:?}", f);
+    let expected = r#"Field { name: "F", bitmask: 0b00011100 }"#;
+
+    assert_eq!(debug, expected);
 }
