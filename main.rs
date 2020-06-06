@@ -6,23 +6,45 @@
 // To run the code:
 //     $ cargo run
 
+// use derive_debug::CustomDebug;
+
+// #[derive(CustomDebug)]
+// pub struct Field {
+//     name: &'static str,
+//     #[debug = "0b{:08b}"]
+//     bitmask: u8,
+// }
+
+// fn main() {
+//     let f = Field {
+//         name: "F",
+//         bitmask: 0b00011100,
+//     };
+
+//     let debug = format!("{:?}", f);
+//     let expected = r#"Field { name: "F", bitmask: 0b00011100 }"#;
+
+//     assert_eq!(debug, expected);
+// }
+
+
+
 use derive_debug::CustomDebug;
 
 #[derive(CustomDebug)]
-pub struct Field {
-    name: &'static str,
-    #[debug = "0b{:08b}"]
-    bitmask: u8,
+pub struct Field<T, E> {
+    value: T,
+    bitmask: E,
 }
 
 fn main() {
     let f = Field {
-        name: "F",
+        value: "F",
         bitmask: 0b00011100,
     };
 
     let debug = format!("{:?}", f);
-    let expected = r#"Field { name: "F", bitmask: 0b00011100 }"#;
+    let expected = r#"Field { value: "F", bitmask: 0b00011100 }"#;
 
     assert_eq!(debug, expected);
 }

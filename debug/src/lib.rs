@@ -11,6 +11,8 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, Meta};
 pub fn derive(input: TokenStream) -> TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
     // println!("input: {:#?}", derive_input);
+    let o_generics = derive_input.generics;
+    let (impl_generics, type_generics, where_clause) = o_generics.split_for_impl();
     let name = derive_input.ident;
     let name_str = name.to_string();
     let fields;
@@ -54,7 +56,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let tokens = quote! {
         use std::fmt::{Formatter, Error, Debug};
 
-        impl Debug for #name {
+        impl#impl_generics Debug for #name#type_generics #where_clause {
             fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
                 f.debug_struct(#name_str)
                     #(
@@ -101,7 +103,6 @@ fn get_format_string_for_field(f: &Field) -> Option<String> {
                 }
             }
             Err(_) => {
-                // println!("could not be prsed");
             }
         }
     }
