@@ -38,12 +38,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
             let name_ident = f.ident.as_ref().expect("only named fields allowed.");
             let name_str = name_ident.to_string();
             let format_string = get_format_string_for_field(&f);
-            println!("{:#?}", format_string);
+            //println!("{:#?}", format_string);
 
             if let Some(fs) = format_string {
-                println!("{}", fs);
+                //println!("{}", fs);
                 quote! {
-                    .field(#name_str, &format!("{}", format_args!(#fs, &self.#name_ident)))
+                    .field(#name_str, &format_args!(#fs, self.#name_ident))
                 }
             } else {
                 quote! {
@@ -62,8 +62,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     #(
                         #fields_format_vec
                     )*
-                    .finish();
-                Ok(())
+                    .finish()
             }
         }
     };
